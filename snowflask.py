@@ -12,7 +12,7 @@ class Snowflask():
     threadId = 0
     sequence = 0
     sequenceMask = 16383
-    lastTimestamp = 0
+    lastTimestamp = {}
     workerIdShift = 16
     threadIdShift = 12
     timestampShift = 22
@@ -21,30 +21,29 @@ class Snowflask():
         if workId > 0 and workId < 16:
             self.workId = workId
         else:
-            raise ("workId out of range(0~16)")
+            raise Exception("workId out of range(0~16)")
 
     def setThead(self, threadId):
         if threadId >= 0 and threadId < 16:
             self.threadId = threadId
         else:
-            raise ("threadId out of range(0~16)")
+            raise Exception("threadId out of range(0~16)")
 
     def timeGen(self):
-        return int(round(time.time() * 1000)) - 1000000000000
+        return int(round(time.time() * 1000)) - 1200000000000
 
-    def tilNextMillis(self):
+    def tilNextMillis(self, threadId):
         timestamp = self.timeGen()
-        if timestamp < self.lastTimestamp:
-            raise ("clock is moving backwards.  Rejecting requests until %d." % self.lastTimestamp);
-
+        if threadId in self.lastTimestamp and timestamp < self.lastTimestamp[threadId]:
+            raise Exception("clock is moving backwards.  %d < %d." % (timestamp, self.lastTimestamp[threadId]));
         return timestamp
 
     def nextIds(self, threadId, sequence):
         self.setThead(threadId)
         if sequence < 0 or sequence > self.sequenceMask:
-            raise ("sequence out of range(0~%s)" % self.sequenceMask)
+            raise ("sequence length out of range(0~%s)" % self.sequenceMask)
         timestamp = self.tilNextMillis()
-        self.lastTimestamp = timestamp
+        self.lastTimestamp[threadId] = timestamp
         temp = timestamp << self.timestampShift | self.workId << self.workerIdShift | self.threadId << self.threadIdShift
         result = []
         for i in range(1, sequence):
@@ -53,12 +52,12 @@ class Snowflask():
 
     def nextId(self, threadId):
         self.setThead(threadId)
-        timestamp = self.tilNextMillis()
-        if timestamp == self.lastTimestamp:
+        timestamp = self.tilNextMillis(threadId)
+        if threadId in self.lastTimestamp and timestamp == self.lastTimestamp[threadId]:
             self.sequence = self.sequence + 1 & self.sequenceMask
             if self.sequence == 0:
-                timestamp = self.tilNextMillis()
+                timestamp = self.tilNextMillis(threadId)
         else:
             self.sequence = 0
-        self.lastTimestamp = timestamp
+        self.lastTimestamp[threadId] = timestamp
         return timestamp << self.timestampShift | self.workId << self.workerIdShift | self.threadId << self.threadIdShift | self.sequence
